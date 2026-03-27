@@ -230,6 +230,13 @@ export default function AdminPage() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (res.status === 409) {
+          alert(data.error || '该座位已被占用，请刷新后重试');
+          setShowAssignDialog(false);
+          setActionLoading(false);
+          setTimeout(() => window.location.reload(), 1000);
+          return;
+        }
         alert(data.error || '分配失败');
         setActionLoading(false);
         return;

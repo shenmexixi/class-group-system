@@ -193,6 +193,17 @@ export default function GroupPage() {
       const data = await res.json();
 
       if (!res.ok) {
+        // 处理并发冲突
+        if (res.status === 409) {
+          alert(data.error || '该座位已被其他同学抢先占用，请刷新页面查看最新状态');
+          // 取消选择并刷新页面
+          setSelectedGroup(null);
+          setSelectedSlot(null);
+          setActionLoading(false);
+          // 延迟刷新，让用户看到提示
+          setTimeout(() => window.location.reload(), 1500);
+          return;
+        }
         alert(data.error || '选座失败');
         setActionLoading(false);
         return;

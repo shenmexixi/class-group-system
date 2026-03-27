@@ -34,32 +34,15 @@ export async function POST(request: NextRequest) {
     // 检查该学生是否已经加入了其他槽位
     const { data: existingStudentSlot } = await client
       .from('group_slots')
-      .select('*')
+      .select('id, group_number, slot_number')
       .eq('class_name', className)
       .eq('student_id', studentId)
       .maybeSingle();
     
     if (existingStudentSlot) {
       return NextResponse.json(
-        { error: '该学生已分配到其他座位，请先移除' },
+        { error: `该学生已在第${existingStudentSlot.group_number}组第${existingStudentSlot.slot_number}号座位，请先移除` },
         { status: 400 }
-      );
-    }
-    
-    // 检查目标槽位
-    const { data: targetSlot, error: checkError } = await client
-      .from('group_slots')
-      .select('*')
-      .eq('class_name', className)
-      .eq('group_number', groupNumber)
-      .eq('slot_number', slotNumber)
-      .maybeSingle();
-    
-    if (checkError) {
-      console.error('检查槽位失败:', checkError);
-      return NextResponse.json(
-        { error: '检查槽位失败' },
-        { status: 500 }
       );
     }
     
@@ -69,8 +52,52 @@ export async function POST(request: NextRequest) {
                       'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
     
-    // 如果槽位不存在，创建新槽位
-    if (!targetSlot) {
+    // 检查目标槽位状态
+    const { data: targetSlot } = await client
+      .from('group_slots')
+      .select('*')
+      .eq('class_name', className)
+      .eq('group_number', groupNumber)
+      .eq('slot_number', slotNumber)
+      .maybeSingle();
+    
+    if (targetSlot) {
+      // 检查槽位是否已被占用
+      if (targetSlot.student_id) {
+        return NextResponse.json(
+          { error: '该座位已被占用' },
+          { status: 400 }
+        );
+      }
+      
+      // 使用条件更新（乐观锁）
+      const { data: updateResult, error: updateError } = await client
+        .from('group_slots')
+        .update({ 
+          student_id: studentId, 
+          is_locked: false,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', targetSlot.id)
+        .is('student_id', null)
+        .select();
+      
+      if (updateError) {
+        console.error('分配座位失败:', updateError);
+        return NextResponse.json(
+          { error: '分配座位失败' },
+          { status: 500 }
+        );
+      }
+      
+      if (!updateResult || updateResult.length === 0) {
+        return NextResponse.json(
+          { error: '该座位已被占用，请刷新后重试' },
+          { status: 409 }
+        );
+      }
+    } else {
+      // 创建新槽位（依赖唯一约束防止重复）
       const { error: insertError } = await client
         .from('group_slots')
         .insert({
@@ -81,32 +108,14 @@ export async function POST(request: NextRequest) {
         });
       
       if (insertError) {
+        if (insertError.code === '23505') {
+          return NextResponse.json(
+            { error: '该座位已被占用，请刷新后重试' },
+            { status: 409 }
+          );
+        }
+        
         console.error('分配座位失败:', insertError);
-        return NextResponse.json(
-          { error: '分配座位失败' },
-          { status: 500 }
-        );
-      }
-    } else {
-      // 检查槽位是否已被占用
-      if (targetSlot.student_id) {
-        return NextResponse.json(
-          { error: '该座位已被占用' },
-          { status: 400 }
-        );
-      }
-      
-      // 更新槽位
-      const { error: updateError } = await client
-        .from('group_slots')
-        .update({
-          student_id: studentId,
-          is_locked: false, // 管理员分配时解锁
-        })
-        .eq('id', targetSlot.id);
-      
-      if (updateError) {
-        console.error('分配座位失败:', updateError);
         return NextResponse.json(
           { error: '分配座位失败' },
           { status: 500 }
@@ -115,19 +124,23 @@ export async function POST(request: NextRequest) {
     }
     
     // 记录日志
-    await client
-      .from('seat_logs')
-      .insert({
-        class_name: className,
-        student_id: studentId,
-        student_name: studentName,
-        group_number: groupNumber,
-        slot_number: slotNumber,
-        action: 'join',
-        details: `管理员分配 ${studentName} 到第${groupNumber}组第${slotNumber}号座位`,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-      });
+    ;(async () => {
+      try {
+        await client.from('seat_logs').insert({
+          class_name: className,
+          student_id: studentId,
+          student_name: studentName,
+          group_number: groupNumber,
+          slot_number: slotNumber,
+          action: 'join',
+          details: `管理员分配 ${studentName} 到第${groupNumber}组第${slotNumber}号座位`,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        });
+      } catch (err) {
+        console.error('记录日志失败:', err);
+      }
+    })();
     
     return NextResponse.json({ success: true });
   } catch (error) {
