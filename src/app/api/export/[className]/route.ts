@@ -83,11 +83,14 @@ export async function GET(
     // 生成Excel文件
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     
+    // 生成安全的文件名（完全使用ASCII字符，避免编码问题）
+    const safeFileName = `group_export_${className.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
+    
     // 返回文件
     return new NextResponse(buf, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(className)}_分组情况.xlsx"`,
+        'Content-Disposition': `attachment; filename="${safeFileName}"`,
       },
     });
   } catch (error) {
