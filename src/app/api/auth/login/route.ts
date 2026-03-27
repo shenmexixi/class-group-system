@@ -15,11 +15,12 @@ export async function POST(request: NextRequest) {
     const client = getSupabaseClient();
     
     // 查询学生（支持学号或姓名）
-    const { data: students, error } = await client
+    // 先按学号查询
+    let { data: students, error } = await client
       .from('students')
       .select('*')
       .eq('class_name', className)
-      .or(`student_id.eq.${identifier},name.eq.${identifier}`);
+      .eq('student_id', identifier);
     
     if (error) {
       console.error('查询失败:', error);
@@ -27,6 +28,25 @@ export async function POST(request: NextRequest) {
         { error: '查询失败，请稍后重试' },
         { status: 500 }
       );
+    }
+    
+    // 如果学号没找到，再按姓名查询
+    if (!students || students.length === 0) {
+      const result = await client
+        .from('students')
+        .select('*')
+        .eq('class_name', className)
+        .eq('name', identifier);
+      
+      if (result.error) {
+        console.error('查询失败:', result.error);
+        return NextResponse.json(
+          { error: '查询失败，请稍后重试' },
+          { status: 500 }
+        );
+      }
+      
+      students = result.data;
     }
     
     if (!students || students.length === 0) {
