@@ -59,6 +59,30 @@ export const admins = pgTable(
   ]
 );
 
+// 选座日志表
+export const seatLogs = pgTable(
+  "seat_logs",
+  {
+    id: serial().primaryKey(),
+    class_name: varchar("class_name", { length: 50 }).notNull(),
+    student_id: integer("student_id").references(() => students.id, { onDelete: "cascade" }),
+    student_name: varchar("student_name", { length: 50 }).notNull(),
+    group_number: integer("group_number"),
+    slot_number: integer("slot_number"),
+    action: varchar("action", { length: 20 }).notNull(), // 'join', 'leave', 'lock', 'unlock', 'set_leader', 'remove_leader'
+    details: varchar("details", { length: 500 }), // 详细信息
+    ip_address: varchar("ip_address", { length: 50 }),
+    user_agent: varchar("user_agent", { length: 500 }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("seat_logs_class_name_idx").on(table.class_name),
+    index("seat_logs_student_id_idx").on(table.student_id),
+    index("seat_logs_action_idx").on(table.action),
+    index("seat_logs_created_at_idx").on(table.created_at),
+  ]
+);
+
 export const healthCheck = pgTable("health_check", {
 	id: serial().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),

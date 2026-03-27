@@ -21,6 +21,7 @@ import {
   User,
   Users,
   Trash2,
+  History,
 } from 'lucide-react';
 
 interface Student {
@@ -52,6 +53,20 @@ interface ClassInfo {
   studentCount: number;
 }
 
+interface SeatLog {
+  id: number;
+  class_name: string;
+  student_id: number | null;
+  student_name: string;
+  group_number: number | null;
+  slot_number: number | null;
+  action: string;
+  details: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
 const GROUP_COLORS = [
   'from-pink-200 to-pink-300',
   'from-blue-200 to-blue-300',
@@ -70,6 +85,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [logs, setLogs] = useState<SeatLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   // 标记客户端已挂载
   useEffect(() => {
@@ -246,6 +263,44 @@ export default function AdminPage() {
     router.push('/');
   };
 
+  const handleFetchLogs = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/logs?className=${encodeURIComponent(selectedClass)}&limit=50`);
+      const data = await res.json();
+      setLogs(data.logs || []);
+      setShowLogs(true);
+    } catch (error) {
+      alert('获取日志失败，请稍后重试');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const getActionText = (action: string) => {
+    const actionMap: Record<string, string> = {
+      join: '加入座位',
+      leave: '退出座位',
+      lock: '锁定座位',
+      unlock: '解锁座位',
+      set_leader: '成为组长',
+      remove_leader: '取消组长',
+    };
+    return actionMap[action] || action;
+  };
+
+  const getActionColor = (action: string) => {
+    const colorMap: Record<string, string> = {
+      join: 'text-green-600',
+      leave: 'text-orange-600',
+      lock: 'text-red-600',
+      unlock: 'text-blue-600',
+      set_leader: 'text-yellow-600',
+      remove_leader: 'text-gray-600',
+    };
+    return colorMap[action] || 'text-gray-600';
+  };
+
   // 在客户端挂载前显示加载状态
   if (!mounted || loading) {
     return (
@@ -269,6 +324,15 @@ export default function AdminPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={handleFetchLogs}
+              variant="outline"
+              className="border-purple-300 text-purple-600 hover:bg-purple-50"
+              disabled={actionLoading}
+            >
+              <History className="w-4 h-4 mr-2" />
+              查看日志
+            </Button>
             <Button
               onClick={handleExport}
               variant="outline"
@@ -477,8 +541,62 @@ export default function AdminPage() {
             <p>3. 可移除任意学生</p>
             <p>4. 可设置/取消任意学生的组长身份</p>
             <p>5. 可导出任意班级的分组情况</p>
+            <p>6. 可查看选座操作日志</p>
           </CardContent>
         </Card>
+
+        {/* 操作日志 */}
+        {showLogs && (
+          <Card className="mt-6 border-2 border-indigo-200 bg-white/80 backdrop-blur">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <History className="w-5 h-5" />
+                操作日志（最近50条）
+              </CardTitle>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowLogs(false)}
+              >
+                关闭
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {logs.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">暂无操作记录</p>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {logs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200"
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className={`text-sm font-medium ${getActionColor(log.action)}`}>
+                          {getActionText(log.action)}
+                        </span>
+                        <span className="text-sm text-gray-700">
+                          {log.student_name}
+                        </span>
+                        {log.group_number && log.slot_number && (
+                          <Badge variant="outline" className="text-xs">
+                            第{log.group_number}组-{log.slot_number}号
+                          </Badge>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {log.details}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(log.created_at).toLocaleString('zh-CN')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

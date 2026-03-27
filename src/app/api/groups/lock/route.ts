@@ -14,6 +14,17 @@ export async function POST(request: NextRequest) {
     
     const client = getSupabaseClient();
     
+    // 获取学生信息
+    let studentName = '管理员';
+    if (studentId) {
+      const { data: student } = await client
+        .from('students')
+        .select('name')
+        .eq('id', studentId)
+        .single();
+      studentName = student?.name || '未知';
+    }
+    
     // 查找槽位
     const { data: slot, error: findError } = await client
       .from('group_slots')
@@ -39,6 +50,14 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // 获取客户端信息
+    const ipAddress = request.headers.get('x-forwarded-for') || 
+                      request.headers.get('x-real-ip') || 
+                      'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    
+    const newLockState = slot ? !slot.is_locked : true;
+    
     // 如果槽位不存在，创建一个锁定的空槽位
     if (!slot) {
       const { error: insertError } = await client
@@ -61,7 +80,7 @@ export async function POST(request: NextRequest) {
       // 切换锁定状态
       const { error: updateError } = await client
         .from('group_slots')
-        .update({ is_locked: !slot.is_locked })
+        .update({ is_locked: newLockState })
         .eq('id', slot.id);
       
       if (updateError) {
@@ -72,6 +91,21 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+    
+    // 记录日志
+    await client
+      .from('seat_logs')
+      .insert({
+        class_name: className,
+        student_id: studentId || null,
+        student_name: studentName,
+        group_number: groupNumber,
+        slot_number: slotNumber,
+        action: newLockState ? 'lock' : 'unlock',
+        details: `${studentName} ${newLockState ? '锁定' : '解锁'}第${groupNumber}组第${slotNumber}号座位`,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      });
     
     return NextResponse.json({ success: true });
   } catch (error) {

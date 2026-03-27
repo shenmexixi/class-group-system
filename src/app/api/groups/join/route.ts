@@ -14,6 +14,15 @@ export async function POST(request: NextRequest) {
     
     const client = getSupabaseClient();
     
+    // 获取学生信息
+    const { data: student } = await client
+      .from('students')
+      .select('name')
+      .eq('id', studentId)
+      .single();
+    
+    const studentName = student?.name || '未知';
+    
     // 检查该槽位是否已被占用或锁定
     const { data: existingSlot, error: checkError } = await client
       .from('group_slots')
@@ -61,6 +70,12 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // 获取客户端信息
+    const ipAddress = request.headers.get('x-forwarded-for') || 
+                      request.headers.get('x-real-ip') || 
+                      'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    
     // 创建或更新槽位
     if (existingSlot) {
       // 更新现有槽位
@@ -95,6 +110,21 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+    
+    // 记录日志
+    await client
+      .from('seat_logs')
+      .insert({
+        class_name: className,
+        student_id: studentId,
+        student_name: studentName,
+        group_number: groupNumber,
+        slot_number: slotNumber,
+        action: 'join',
+        details: `学生 ${studentName} 加入第${groupNumber}组第${slotNumber}号座位`,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      });
     
     return NextResponse.json({ success: true });
   } catch (error) {

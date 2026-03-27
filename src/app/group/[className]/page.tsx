@@ -11,10 +11,11 @@ import {
   Download,
   LogOut,
   Lock,
-  Unlock,
   Crown,
   User,
   Users,
+  Check,
+  X,
 } from 'lucide-react';
 
 interface Student {
@@ -62,6 +63,10 @@ export default function GroupPage() {
   const [mounted, setMounted] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [wantLeader, setWantLeader] = useState(false);
+  
+  // 选座状态
+  const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
 
   // 标记客户端已挂载
   useEffect(() => {
@@ -77,7 +82,6 @@ export default function GroupPage() {
       const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
       if (!userStr) {
-        console.log('未找到用户信息，跳转首页');
         setLoading(false);
         router.push('/');
         return;
@@ -86,26 +90,20 @@ export default function GroupPage() {
       try {
         const user = JSON.parse(userStr) as CurrentUser;
 
-        // 如果是管理员，跳转到管理员页面
         if (isAdmin) {
-          console.log('管理员登录，跳转管理页面');
           setLoading(false);
           router.push('/admin');
           return;
         }
 
-        // 解码URL中的className（处理中文编码问题）
         const decodedClassName = decodeURIComponent(className);
         
-        // 检查班级是否匹配
         if (user.className !== decodedClassName) {
-          console.log('班级不匹配:', user.className, decodedClassName);
           setLoading(false);
           router.push('/');
           return;
         }
 
-        console.log('验证通过，用户:', user);
         setCurrentUser(user);
       } catch (e) {
         console.error('解析用户信息失败:', e);
@@ -117,19 +115,17 @@ export default function GroupPage() {
     checkAuth();
   }, [className, router, mounted]);
 
-  // 获取分组数据（依赖 currentUser）
+  // 获取分组数据
   useEffect(() => {
     if (!currentUser || !mounted) return;
 
     const fetchGroupData = async () => {
       try {
-        // 对className进行URL编码
         const res = await fetch(`/api/groups/${encodeURIComponent(className)}`);
         const data = await res.json();
         setSlots(data.slots || []);
         setStudents(data.students || []);
 
-        // 检查当前用户是否已选择组长
         const userSlot = (data.slots || []).find(
           (s: GroupSlot) => s.student_id === currentUser.id
         );
@@ -152,8 +148,34 @@ export default function GroupPage() {
     );
   };
 
-  const handleJoinSlot = async (groupNum: number, slotNum: number) => {
-    if (!currentUser) return;
+  // 点击座位处理
+  const handleSlotClick = (groupNum: number, slotNum: number) => {
+    const slot = getSlotByGroupAndNumber(groupNum, slotNum);
+    
+    // 已占用或已锁定的座位不可选
+    if (slot && (slot.student_id || slot.is_locked)) {
+      return;
+    }
+    
+    // 如果已加入分组，不允许再选座
+    const mySlot = slots.find(s => s.student_id === currentUser?.id);
+    if (mySlot) {
+      return;
+    }
+    
+    // 选中/取消选中
+    if (selectedGroup === groupNum && selectedSlot === slotNum) {
+      setSelectedGroup(null);
+      setSelectedSlot(null);
+    } else {
+      setSelectedGroup(groupNum);
+      setSelectedSlot(slotNum);
+    }
+  };
+
+  // 确认选座
+  const handleConfirmSeat = async () => {
+    if (!currentUser || selectedGroup === null || selectedSlot === null) return;
 
     setActionLoading(true);
     try {
@@ -161,9 +183,9 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className,
-          groupNumber: groupNum,
-          slotNumber: slotNum,
+          className: decodeURIComponent(className),
+          groupNumber: selectedGroup,
+          slotNumber: selectedSlot,
           studentId: currentUser.id,
         }),
       });
@@ -171,21 +193,37 @@ export default function GroupPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || '加入失败');
+        alert(data.error || '选座失败');
         setActionLoading(false);
         return;
       }
 
+      alert('选座成功！');
       // 刷新数据
       window.location.reload();
     } catch (error) {
-      alert('加入失败，请稍后重试');
+      alert('选座失败，请稍后重试');
       setActionLoading(false);
     }
   };
 
+  // 取消选择
+  const handleCancelSelection = () => {
+    setSelectedGroup(null);
+    setSelectedSlot(null);
+  };
+
+  // 退出分组
   const handleLeaveSlot = async () => {
     if (!currentUser) return;
+
+    const mySlot = slots.find(s => s.student_id === currentUser.id);
+    if (!mySlot) return;
+
+    if (mySlot.is_locked) {
+      alert('您的座位已被锁定，无法退出');
+      return;
+    }
 
     if (!confirm('确定要退出当前分组吗？')) return;
 
@@ -195,7 +233,7 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className,
+          className: decodeURIComponent(className),
           studentId: currentUser.id,
         }),
       });
@@ -208,8 +246,8 @@ export default function GroupPage() {
         return;
       }
 
+      alert('已退出分组');
       setWantLeader(false);
-      // 刷新数据
       window.location.reload();
     } catch (error) {
       alert('退出失败，请稍后重试');
@@ -217,8 +255,12 @@ export default function GroupPage() {
     }
   };
 
-  const handleToggleLock = async (groupNum: number, slotNum: number) => {
+  // 锁定座位
+  const handleToggleLock = async () => {
     if (!currentUser) return;
+
+    const mySlot = slots.find(s => s.student_id === currentUser.id);
+    if (!mySlot) return;
 
     setActionLoading(true);
     try {
@@ -226,9 +268,9 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className,
-          groupNumber: groupNum,
-          slotNumber: slotNum,
+          className: decodeURIComponent(className),
+          groupNumber: mySlot.group_number,
+          slotNumber: mySlot.slot_number,
           studentId: currentUser.id,
         }),
       });
@@ -241,7 +283,7 @@ export default function GroupPage() {
         return;
       }
 
-      // 刷新数据
+      alert(mySlot.is_locked ? '已解锁座位' : '已锁定座位');
       window.location.reload();
     } catch (error) {
       alert('操作失败，请稍后重试');
@@ -249,6 +291,7 @@ export default function GroupPage() {
     }
   };
 
+  // 设置组长
   const handleToggleLeader = async (checked: boolean) => {
     if (!currentUser) return;
 
@@ -258,7 +301,7 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className,
+          className: decodeURIComponent(className),
           studentId: currentUser.id,
           isLeader: checked,
         }),
@@ -273,7 +316,7 @@ export default function GroupPage() {
       }
 
       setWantLeader(checked);
-      // 刷新数据
+      alert(checked ? '已申请成为组长' : '已取消组长申请');
       window.location.reload();
     } catch (error) {
       alert('设置失败，请稍后重试');
@@ -303,6 +346,8 @@ export default function GroupPage() {
     );
   }
 
+  const decodedClassName = decodeURIComponent(className);
+
   return (
     <div className="min-h-screen p-4 bg-gradient-to-br from-pink-50 via-blue-50 to-purple-50">
       <div className="max-w-7xl mx-auto">
@@ -310,10 +355,10 @@ export default function GroupPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-              {className} 分组管理
+              {decodedClassName} 分组选座
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              欢迎你，{currentUser?.name}（{currentUser?.studentId}）
+              欢迎，{currentUser?.name}（{currentUser?.studentId}）
             </p>
           </div>
           <div className="flex gap-2">
@@ -336,14 +381,48 @@ export default function GroupPage() {
           </div>
         </div>
 
-        {/* 我的分组信息 */}
+        {/* 图例说明 */}
+        <Card className="mb-6 border-2 border-gray-200 bg-white/80 backdrop-blur">
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gray-200 border-2 border-gray-300"></div>
+                <span>已占用</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gray-100 border-2 border-gray-400 flex items-center justify-center">
+                  <Lock className="w-4 h-4 text-gray-500" />
+                </div>
+                <span>已锁定</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-white border-2 border-dashed border-gray-300"></div>
+                <span>可选座位</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-green-100 border-2 border-green-400"></div>
+                <span>已选中</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-pink-100 border-2 border-pink-400"></div>
+                <span>我的座位</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-yellow-500" />
+                <span>组长</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 我的座位信息 */}
         {mySlot && (
           <Card className="mb-6 border-2 border-pink-200 bg-white/80 backdrop-blur">
             <CardContent className="pt-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="text-sm">
-                    <span className="font-medium text-gray-700">我的位置：</span>
+                    <span className="font-medium text-gray-700">我的座位：</span>
                     <Badge variant="secondary" className="ml-2">
                       第 {mySlot.group_number} 组 - 槽位 {mySlot.slot_number}
                     </Badge>
@@ -353,27 +432,95 @@ export default function GroupPage() {
                         组长
                       </Badge>
                     )}
+                    {mySlot.is_locked && (
+                      <Badge className="ml-2 bg-gray-400 text-white">
+                        <Lock className="w-3 h-3 mr-1" />
+                        已锁定
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="wantLeader"
-                      checked={wantLeader}
-                      onCheckedChange={handleToggleLeader}
+                  {!mySlot.is_locked && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="wantLeader"
+                          checked={wantLeader}
+                          onCheckedChange={handleToggleLeader}
+                          disabled={actionLoading}
+                        />
+                        <Label htmlFor="wantLeader" className="text-sm cursor-pointer">
+                          担任组长
+                        </Label>
+                      </div>
+                      <Button
+                        onClick={handleToggleLock}
+                        variant="outline"
+                        size="sm"
+                        disabled={actionLoading}
+                        className="border-blue-300 text-blue-600"
+                      >
+                        <Lock className="w-4 h-4 mr-1" />
+                        锁定座位
+                      </Button>
+                      <Button
+                        onClick={handleLeaveSlot}
+                        variant="destructive"
+                        size="sm"
+                        disabled={actionLoading}
+                      >
+                        退出分组
+                      </Button>
+                    </>
+                  )}
+                  {mySlot.is_locked && (
+                    <Button
+                      onClick={handleToggleLock}
+                      variant="outline"
+                      size="sm"
                       disabled={actionLoading}
-                    />
-                    <Label htmlFor="wantLeader" className="text-sm cursor-pointer">
-                      我想担任组长
-                    </Label>
-                  </div>
+                      className="border-blue-300 text-blue-600"
+                    >
+                      <Lock className="w-4 h-4 mr-1" />
+                      解锁座位
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 选座确认栏 */}
+        {selectedGroup !== null && selectedSlot !== null && !mySlot && (
+          <Card className="mb-6 border-2 border-green-300 bg-green-50/80 backdrop-blur">
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="font-medium text-green-700">已选座位：</span>
+                  <Badge variant="secondary" className="ml-2 bg-green-100 text-green-700">
+                    第 {selectedGroup} 组 - 槽位 {selectedSlot}
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
                   <Button
-                    onClick={handleLeaveSlot}
-                    variant="destructive"
+                    onClick={handleCancelSelection}
+                    variant="outline"
                     size="sm"
-                    disabled={actionLoading || mySlot.is_locked}
+                    disabled={actionLoading}
                   >
-                    退出分组
+                    <X className="w-4 h-4 mr-1" />
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleConfirmSeat}
+                    size="sm"
+                    disabled={actionLoading}
+                    className="bg-green-500 hover:bg-green-600 text-white"
+                  >
+                    <Check className="w-4 h-4 mr-1" />
+                    确认选座
                   </Button>
                 </div>
               </div>
@@ -381,7 +528,7 @@ export default function GroupPage() {
           </Card>
         )}
 
-        {/* 分组区域 */}
+        {/* 分组区域 - 电影院选座模式 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {[1, 2, 3, 4, 5].map(groupNum => {
             const groupSlots = Array.from({ length: 7 }, (_, i) => {
@@ -419,34 +566,37 @@ export default function GroupPage() {
                     const isMySlot = slot.student_id === currentUser?.id;
                     const isOccupied = slot.student_id !== null;
                     const isLocked = slot.is_locked;
+                    const isSelected = selectedGroup === groupNum && selectedSlot === index + 1;
+
+                    // 计算样式
+                    let slotClass = '';
+                    if (isMySlot) {
+                      slotClass = 'border-pink-400 bg-pink-100 cursor-default';
+                    } else if (isLocked && !isOccupied) {
+                      slotClass = 'border-gray-400 bg-gray-100 cursor-not-allowed';
+                    } else if (isOccupied) {
+                      slotClass = 'border-gray-300 bg-gray-200 cursor-not-allowed';
+                    } else if (isSelected) {
+                      slotClass = 'border-green-400 bg-green-100 cursor-pointer ring-2 ring-green-300';
+                    } else {
+                      slotClass = 'border-dashed border-gray-300 bg-white/50 cursor-pointer hover:bg-white/80 hover:border-gray-400';
+                    }
 
                     return (
                       <div
                         key={index}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                          isMySlot
-                            ? 'border-pink-400 bg-pink-50'
-                            : isLocked
-                            ? 'border-gray-300 bg-gray-100'
-                            : isOccupied
-                            ? 'border-white/50 bg-white/30'
-                            : 'border-dashed border-gray-300 bg-white/20 hover:bg-white/40 cursor-pointer'
-                        }`}
-                        onClick={() => {
-                          if (!isOccupied && !isLocked && !mySlot) {
-                            handleJoinSlot(groupNum, index + 1);
-                          }
-                        }}
+                        className={`p-3 rounded-lg border-2 transition-all ${slotClass}`}
+                        onClick={() => !isOccupied && !isLocked && !mySlot && handleSlotClick(groupNum, index + 1)}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-gray-600">
+                            <span className="text-xs font-medium text-gray-600 w-4">
                               {index + 1}
                             </span>
                             {slot.students ? (
                               <>
                                 <User className="w-4 h-4 text-gray-600" />
-                                <span className="text-sm font-medium">
+                                <span className="text-sm font-medium flex-1">
                                   {slot.students.name}
                                 </span>
                                 {slot.is_leader && (
@@ -454,34 +604,27 @@ export default function GroupPage() {
                                 )}
                               </>
                             ) : isLocked ? (
-                              <span className="text-sm text-gray-500">已锁定</span>
+                              <>
+                                <Lock className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm text-gray-500">已锁定</span>
+                              </>
+                            ) : isSelected ? (
+                              <>
+                                <Check className="w-4 h-4 text-green-600" />
+                                <span className="text-sm font-medium text-green-700">已选中</span>
+                              </>
                             ) : (
-                              <span className="text-sm text-gray-500">空位</span>
+                              <span className="text-sm text-gray-500">可选</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            {isMySlot && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  handleToggleLock(groupNum, index + 1);
-                                }}
-                                disabled={actionLoading}
-                              >
-                                {isLocked ? (
-                                  <Lock className="w-4 h-4 text-red-500" />
-                                ) : (
-                                  <Unlock className="w-4 h-4 text-green-500" />
-                                )}
-                              </Button>
-                            )}
-                            {!isOccupied && isLocked && !isMySlot && (
-                              <Lock className="w-4 h-4 text-gray-400" />
-                            )}
-                          </div>
+                          {isMySlot && !isLocked && (
+                            <Badge variant="outline" className="text-xs border-pink-400 text-pink-600">
+                              我的
+                            </Badge>
+                          )}
+                          {isMySlot && isLocked && (
+                            <Lock className="w-4 h-4 text-gray-500" />
+                          )}
                         </div>
                       </div>
                     );
@@ -493,10 +636,10 @@ export default function GroupPage() {
         </div>
 
         {/* 未分组学生 */}
-        {students.length > 0 && (
+        {students.filter(s => !slots.find(slot => slot.student_id === s.id)).length > 0 && (
           <Card className="mt-6 border-2 border-blue-200 bg-white/80 backdrop-blur">
             <CardHeader>
-              <CardTitle className="text-lg">未分组学生</CardTitle>
+              <CardTitle className="text-lg">未分组学生（{students.filter(s => !slots.find(slot => slot.student_id === s.id)).length}人）</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -508,7 +651,7 @@ export default function GroupPage() {
                       variant="secondary"
                       className="bg-blue-100 text-blue-700"
                     >
-                      {student.name}（{student.student_id}）
+                      {student.name}
                     </Badge>
                   ))}
               </div>
@@ -519,13 +662,14 @@ export default function GroupPage() {
         {/* 使用说明 */}
         <Card className="mt-6 border-2 border-purple-200 bg-white/80 backdrop-blur">
           <CardHeader>
-            <CardTitle className="text-lg">使用说明</CardTitle>
+            <CardTitle className="text-lg">选座说明</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-gray-600 space-y-2">
-            <p>1. 点击空白槽位可加入分组</p>
-            <p>2. 加入分组后可勾选"我想担任组长"</p>
-            <p>3. 点击锁定图标可锁定/解锁自己的槽位（锁定后无法退出）</p>
-            <p>4. 每人只能加入一个槽位</p>
+            <p>1. 点击可选座位进行选择（绿色高亮表示已选中）</p>
+            <p>2. 点击"确认选座"按钮完成选座</p>
+            <p>3. 选座后可以点击"锁定座位"防止误操作</p>
+            <p>4. 锁定前可随时退出重新选择，锁定后需先解锁</p>
+            <p>5. 可勾选"担任组长"申请成为小组组长</p>
           </CardContent>
         </Card>
       </div>
