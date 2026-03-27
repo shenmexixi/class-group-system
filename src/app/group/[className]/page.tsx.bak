@@ -82,10 +82,6 @@ export default function GroupPage() {
       const userStr = localStorage.getItem('currentUser');
       const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-      console.log('[checkAuth] 开始检查登录状态');
-      console.log('[checkAuth] className from URL:', className);
-      console.log('[checkAuth] userStr:', userStr ? '存在' : '不存在');
-
       if (!userStr) {
         setLoading(false);
         router.push('/');
@@ -94,7 +90,6 @@ export default function GroupPage() {
 
       try {
         const user = JSON.parse(userStr) as CurrentUser;
-        console.log('[checkAuth] 解析的用户:', user);
 
         if (isAdmin) {
           setLoading(false);
@@ -103,9 +98,6 @@ export default function GroupPage() {
         }
 
         const decodedClassName = decodeURIComponent(className);
-        console.log('[checkAuth] decodedClassName:', decodedClassName);
-        console.log('[checkAuth] user.className:', user.className);
-        console.log('[checkAuth] 班级匹配:', user.className === decodedClassName);
         
         if (user.className !== decodedClassName) {
           setLoading(false);
@@ -113,7 +105,6 @@ export default function GroupPage() {
           return;
         }
 
-        console.log('[checkAuth] 设置 currentUser');
         setCurrentUser(user);
       } catch (e) {
         console.error('解析用户信息失败:', e);
@@ -127,28 +118,12 @@ export default function GroupPage() {
 
   // 获取分组数据
   useEffect(() => {
-    console.log('[fetchGroupData] useEffect 触发');
-    console.log('[fetchGroupData] currentUser:', currentUser);
-    console.log('[fetchGroupData] mounted:', mounted);
-    
     if (!currentUser || !mounted) return;
 
     const fetchGroupData = async () => {
       try {
-        // 添加时间戳参数防止缓存
-        const url = `/api/groups/${encodeURIComponent(className)}?t=${Date.now()}`;
-        console.log('[fetchGroupData] 请求 URL:', url);
-        
-        const res = await fetch(url, {
-          cache: 'no-store',  // 禁用缓存
-        });
+        const res = await fetch(`/api/groups/${encodeURIComponent(className)}`);
         const data = await res.json();
-        
-        console.log('[fetchGroupData] API 返回数据:', data);
-        console.log('[fetchGroupData] slots 数量:', data.slots?.length);
-        console.log('[fetchGroupData] students 数量:', data.students?.length);
-        console.log('[fetchGroupData] slots 详情:', JSON.stringify(data.slots, null, 2));
-        
         setSlots(data.slots || []);
         setStudents(data.students || []);
 
