@@ -69,7 +69,7 @@ export const seatLogs = pgTable(
     student_name: varchar("student_name", { length: 50 }).notNull(),
     group_number: integer("group_number"),
     slot_number: integer("slot_number"),
-    action: varchar("action", { length: 20 }).notNull(), // 'join', 'leave', 'lock', 'unlock', 'set_leader', 'remove_leader'
+    action: varchar("action", { length: 20 }).notNull(), // 'join', 'leave', 'lock', 'unlock', 'set_leader', 'remove_leader', 'move'
     details: varchar("details", { length: 500 }), // 详细信息
     ip_address: varchar("ip_address", { length: 50 }),
     user_agent: varchar("user_agent", { length: 500 }),

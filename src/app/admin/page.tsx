@@ -13,6 +13,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Download,
   LogOut,
   Lock,
@@ -22,6 +30,9 @@ import {
   Users,
   Trash2,
   History,
+  Move,
+  UserPlus,
+  X,
 } from 'lucide-react';
 
 interface Student {
@@ -87,6 +98,13 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [logs, setLogs] = useState<SeatLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  
+  // 分配/移动相关状态
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [selectedTargetSlot, setSelectedTargetSlot] = useState<{ group: number; slot: number } | null>(null);
+  const [selectedStudentToAssign, setSelectedStudentToAssign] = useState<Student | null>(null);
+  const [selectedStudentToMove, setSelectedStudentToMove] = useState<{ student: Student; fromGroup: number; fromSlot: number } | null>(null);
 
   // 标记客户端已挂载
   useEffect(() => {
@@ -117,7 +135,7 @@ export default function AdminPage() {
     checkAuth();
   }, [router, mounted]);
 
-  // 获取班级列表（依赖 currentAdmin）
+  // 获取班级列表
   useEffect(() => {
     if (!currentAdmin || !mounted) return;
 
@@ -139,7 +157,7 @@ export default function AdminPage() {
     fetchClasses();
   }, [currentAdmin, mounted]);
 
-  // 获取分组数据（依赖 selectedClass）
+  // 获取分组数据
   useEffect(() => {
     if (!selectedClass || !mounted) return;
 
@@ -161,6 +179,112 @@ export default function AdminPage() {
     return slots.find(
       s => s.group_number === groupNum && s.slot_number === slotNum
     );
+  };
+
+  // 获取未分组学生
+  const unassignedStudents = students.filter(s => !slots.find(slot => slot.student_id === s.id));
+
+  // 点击空座位 - 分配学生
+  const handleEmptySlotClick = (groupNum: number, slotNum: number) => {
+    const slot = getSlotByGroupAndNumber(groupNum, slotNum);
+    if (slot?.is_locked && !slot.student_id) {
+      // 已锁定的空座位，先解锁
+      return;
+    }
+    
+    if (unassignedStudents.length === 0) {
+      alert('没有未分组的学生可分配');
+      return;
+    }
+    
+    setSelectedTargetSlot({ group: groupNum, slot: slotNum });
+    setSelectedStudentToAssign(null);
+    setShowAssignDialog(true);
+  };
+
+  // 点击已占用座位 - 移动学生
+  const handleOccupiedSlotClick = (student: Student, groupNum: number, slotNum: number) => {
+    setSelectedStudentToMove({ student, fromGroup: groupNum, fromSlot: slotNum });
+    setSelectedTargetSlot(null);
+    setShowMoveDialog(true);
+  };
+
+  // 确认分配学生
+  const handleConfirmAssign = async () => {
+    if (!selectedStudentToAssign || !selectedTargetSlot) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/groups/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          className: selectedClass,
+          studentId: selectedStudentToAssign.id,
+          groupNumber: selectedTargetSlot.group,
+          slotNumber: selectedTargetSlot.slot,
+          isAdmin: true,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || '分配失败');
+        setActionLoading(false);
+        return;
+      }
+
+      setShowAssignDialog(false);
+      window.location.reload();
+    } catch (error) {
+      alert('分配失败，请稍后重试');
+      setActionLoading(false);
+    }
+  };
+
+  // 选择移动目标座位
+  const handleSelectMoveTarget = (groupNum: number, slotNum: number) => {
+    const slot = getSlotByGroupAndNumber(groupNum, slotNum);
+    if (slot?.student_id) {
+      alert('目标座位已被占用');
+      return;
+    }
+    setSelectedTargetSlot({ group: groupNum, slot: slotNum });
+  };
+
+  // 确认移动学生
+  const handleConfirmMove = async () => {
+    if (!selectedStudentToMove || !selectedTargetSlot) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/groups/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          className: selectedClass,
+          studentId: selectedStudentToMove.student.id,
+          targetGroupNumber: selectedTargetSlot.group,
+          targetSlotNumber: selectedTargetSlot.slot,
+          isAdmin: true,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || '移动失败');
+        setActionLoading(false);
+        return;
+      }
+
+      setShowMoveDialog(false);
+      window.location.reload();
+    } catch (error) {
+      alert('移动失败，请稍后重试');
+      setActionLoading(false);
+    }
   };
 
   const handleToggleLock = async (groupNum: number, slotNum: number) => {
@@ -185,7 +309,6 @@ export default function AdminPage() {
         return;
       }
 
-      // 刷新数据
       window.location.reload();
     } catch (error) {
       alert('操作失败，请稍后重试');
@@ -194,7 +317,7 @@ export default function AdminPage() {
   };
 
   const handleRemoveStudent = async (studentId: number) => {
-    if (!confirm('确定要移除该学生吗？')) return;
+    if (!confirm('确定要移除该学生吗？（即使是已锁定的座位也可以移除）')) return;
 
     setActionLoading(true);
     try {
@@ -204,6 +327,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           className: selectedClass,
           studentId,
+          isAdmin: true,
         }),
       });
 
@@ -215,7 +339,6 @@ export default function AdminPage() {
         return;
       }
 
-      // 刷新数据
       window.location.reload();
     } catch (error) {
       alert('移除失败，请稍后重试');
@@ -245,7 +368,6 @@ export default function AdminPage() {
         return;
       }
 
-      // 刷新数据
       window.location.reload();
     } catch (error) {
       alert('设置失败，请稍后重试');
@@ -285,6 +407,7 @@ export default function AdminPage() {
       unlock: '解锁座位',
       set_leader: '成为组长',
       remove_leader: '取消组长',
+      move: '移动座位',
     };
     return actionMap[action] || action;
   };
@@ -297,6 +420,7 @@ export default function AdminPage() {
       unlock: 'text-blue-600',
       set_leader: 'text-yellow-600',
       remove_leader: 'text-gray-600',
+      move: 'text-purple-600',
     };
     return colorMap[action] || 'text-gray-600';
   };
@@ -373,6 +497,67 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
+        {/* 图例说明 */}
+        <Card className="mb-6 border-2 border-gray-200 bg-white/80 backdrop-blur">
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gray-200 border-2 border-gray-300"></div>
+                <span>已占用（点击可移动）</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gray-100 border-2 border-gray-400"></div>
+                <span>已锁定</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-white border-2 border-dashed border-gray-300"></div>
+                <span>空位（点击可分配）</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-yellow-500" />
+                <span>组长</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Move className="w-5 h-5 text-purple-500" />
+                <span>移动</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 未分组学生 */}
+        {unassignedStudents.length > 0 && (
+          <Card className="mb-6 border-2 border-blue-200 bg-white/80 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-blue-500" />
+                未分组学生（{unassignedStudents.length}人）
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {unassignedStudents.map(student => (
+                  <Badge
+                    key={student.id}
+                    variant="secondary"
+                    className="bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200 transition-colors"
+                    onClick={() => {
+                      if (unassignedStudents.length > 0) {
+                        setSelectedStudentToAssign(student);
+                        setSelectedTargetSlot(null);
+                        setShowAssignDialog(true);
+                      }
+                    }}
+                  >
+                    {student.name}（{student.student_id}）
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">点击学生姓名可快速分配座位</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 分组区域 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {[1, 2, 3, 4, 5].map(groupNum => {
@@ -415,12 +600,19 @@ export default function AdminPage() {
                       <div
                         key={index}
                         className={`p-3 rounded-lg border-2 transition-all ${
-                          isLocked
-                            ? 'border-gray-300 bg-gray-100'
+                          isLocked && !isOccupied
+                            ? 'border-gray-400 bg-gray-100'
                             : isOccupied
-                            ? 'border-white/50 bg-white/30'
-                            : 'border-dashed border-gray-300 bg-white/20'
+                            ? 'border-white/50 bg-white/30 cursor-pointer hover:bg-white/50'
+                            : 'border-dashed border-gray-300 bg-white/20 cursor-pointer hover:bg-white/40'
                         }`}
+                        onClick={() => {
+                          if (isOccupied && slot.students) {
+                            handleOccupiedSlotClick(slot.students, groupNum, index + 1);
+                          } else {
+                            handleEmptySlotClick(groupNum, index + 1);
+                          }
+                        }}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 flex-1">
@@ -443,7 +635,7 @@ export default function AdminPage() {
                               <span className="text-sm text-gray-500">空位</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             {slot.student_id && (
                               <>
                                 <Button
@@ -475,7 +667,7 @@ export default function AdminPage() {
                                     handleRemoveStudent(slot.student_id!)
                                   }
                                   disabled={actionLoading}
-                                  title="移除学生"
+                                  title="移除学生（可移除已锁定）"
                                 >
                                   <Trash2 className="w-4 h-4 text-red-500" />
                                 </Button>
@@ -506,42 +698,19 @@ export default function AdminPage() {
           })}
         </div>
 
-        {/* 未分组学生 */}
-        {students.length > 0 && (
-          <Card className="mt-6 border-2 border-blue-200 bg-white/80 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-lg">未分组学生</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {students
-                  .filter(s => !slots.find(slot => slot.student_id === s.id))
-                  .map(student => (
-                    <Badge
-                      key={student.id}
-                      variant="secondary"
-                      className="bg-blue-100 text-blue-700"
-                    >
-                      {student.name}（{student.student_id}）
-                    </Badge>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* 管理员说明 */}
         <Card className="mt-6 border-2 border-purple-200 bg-white/80 backdrop-blur">
           <CardHeader>
             <CardTitle className="text-lg">管理员功能</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-gray-600 space-y-2">
-            <p>1. 可查看所有班级的分组情况</p>
-            <p>2. 可锁定/解锁任意槽位</p>
-            <p>3. 可移除任意学生</p>
-            <p>4. 可设置/取消任意学生的组长身份</p>
-            <p>5. 可导出任意班级的分组情况</p>
-            <p>6. 可查看选座操作日志</p>
+            <p>1. 点击空座位可分配未分组学生</p>
+            <p>2. 点击已占用座位可移动该学生到其他位置</p>
+            <p>3. 可锁定/解锁任意槽位</p>
+            <p>4. 可移除任意学生（包括已锁定的座位）</p>
+            <p>5. 可设置/取消任意学生的组长身份</p>
+            <p>6. 可导出任意班级的分组情况</p>
+            <p>7. 可查看所有操作日志</p>
           </CardContent>
         </Card>
 
@@ -597,6 +766,164 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* 分配学生对话框 */}
+        <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>分配学生到座位</DialogTitle>
+              <DialogDescription>
+                {selectedTargetSlot 
+                  ? `将学生分配到 第${selectedTargetSlot.group}组 第${selectedTargetSlot.slot}号座位`
+                  : '选择座位和学生进行分配'
+                }
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="space-y-4">
+                {/* 选择目标座位 */}
+                {!selectedTargetSlot && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">选择目标座位：</label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {[1, 2, 3, 4, 5].map(g => (
+                        <div key={g} className="space-y-1">
+                          <div className="text-xs text-center font-medium text-gray-600">第{g}组</div>
+                          {[1, 2, 3, 4, 5, 6, 7].map(s => {
+                            const slot = getSlotByGroupAndNumber(g, s);
+                            const isOccupied = slot?.student_id;
+                            const isLocked = slot?.is_locked;
+                            return (
+                              <div
+                                key={s}
+                                className={`text-xs text-center py-1 px-2 rounded cursor-pointer ${
+                                  isOccupied 
+                                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                    : isLocked
+                                    ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }`}
+                                onClick={() => {
+                                  if (!isOccupied && !isLocked) {
+                                    setSelectedTargetSlot({ group: g, slot: s });
+                                  }
+                                }}
+                              >
+                                {s}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 选择学生 */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">选择学生：</label>
+                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                    {unassignedStudents.map(student => (
+                      <Badge
+                        key={student.id}
+                        variant={selectedStudentToAssign?.id === student.id ? "default" : "secondary"}
+                        className={`cursor-pointer ${
+                          selectedStudentToAssign?.id === student.id 
+                            ? 'bg-purple-500 text-white' 
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        onClick={() => setSelectedStudentToAssign(student)}
+                      >
+                        {student.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAssignDialog(false)}>
+                取消
+              </Button>
+              <Button 
+                onClick={handleConfirmAssign}
+                disabled={!selectedStudentToAssign || !selectedTargetSlot || actionLoading}
+              >
+                确认分配
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* 移动学生对话框 */}
+        <Dialog open={showMoveDialog} onOpenChange={setShowMoveDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>移动学生</DialogTitle>
+              <DialogDescription>
+                将 <strong>{selectedStudentToMove?.student.name}</strong> 从 
+                第{selectedStudentToMove?.fromGroup}组第{selectedStudentToMove?.fromSlot}号 移动到其他座位
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="space-y-4">
+                {/* 选择目标座位 */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">选择目标座位：</label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[1, 2, 3, 4, 5].map(g => (
+                      <div key={g} className="space-y-1">
+                        <div className="text-xs text-center font-medium text-gray-600">第{g}组</div>
+                        {[1, 2, 3, 4, 5, 6, 7].map(s => {
+                          const slot = getSlotByGroupAndNumber(g, s);
+                          const isOccupied = slot?.student_id;
+                          const isCurrent = selectedStudentToMove && 
+                            g === selectedStudentToMove.fromGroup && 
+                            s === selectedStudentToMove.fromSlot;
+                          const isSelected = selectedTargetSlot && 
+                            selectedTargetSlot.group === g && 
+                            selectedTargetSlot.slot === s;
+                          return (
+                            <div
+                              key={s}
+                              className={`text-xs text-center py-1 px-2 rounded cursor-pointer ${
+                                isCurrent
+                                  ? 'bg-purple-200 text-purple-700 cursor-not-allowed'
+                                  : isOccupied
+                                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                  : isSelected
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                              onClick={() => {
+                                if (!isOccupied && !isCurrent) {
+                                  handleSelectMoveTarget(g, s);
+                                }
+                              }}
+                            >
+                              {s}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowMoveDialog(false)}>
+                取消
+              </Button>
+              <Button 
+                onClick={handleConfirmMove}
+                disabled={!selectedTargetSlot || actionLoading}
+              >
+                确认移动
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

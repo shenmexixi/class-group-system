@@ -3,7 +3,7 @@ import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 export async function POST(request: NextRequest) {
   try {
-    const { className, studentId } = await request.json();
+    const { className, studentId, isAdmin } = await request.json();
     
     if (!className || !studentId) {
       return NextResponse.json(
@@ -41,13 +41,13 @@ export async function POST(request: NextRequest) {
     
     if (!slot) {
       return NextResponse.json(
-        { error: '未找到您的分组信息' },
+        { error: '未找到分组信息' },
         { status: 404 }
       );
     }
     
-    // 检查是否锁定
-    if (slot.is_locked) {
+    // 检查是否锁定（管理员可以移除已锁定的）
+    if (slot.is_locked && !isAdmin) {
       return NextResponse.json(
         { error: '槽位已锁定，无法退出' },
         { status: 400 }
@@ -63,19 +63,26 @@ export async function POST(request: NextRequest) {
     const groupNumber = slot.group_number;
     const slotNumber = slot.slot_number;
     
-    // 清空槽位的学生信息
+    // 清空槽位的学生信息（管理员操作时同时解锁）
+    const updateData: Record<string, unknown> = {
+      student_id: null,
+      is_leader: false,
+    };
+    
+    // 如果是管理员操作，同时解锁
+    if (isAdmin && slot.is_locked) {
+      updateData.is_locked = false;
+    }
+    
     const { error: updateError } = await client
       .from('group_slots')
-      .update({
-        student_id: null,
-        is_leader: false,
-      })
+      .update(updateData)
       .eq('id', slot.id);
     
     if (updateError) {
-      console.error('退出分组失败:', updateError);
+      console.error('移除学生失败:', updateError);
       return NextResponse.json(
-        { error: '退出分组失败' },
+        { error: '移除学生失败' },
         { status: 500 }
       );
     }
@@ -90,16 +97,16 @@ export async function POST(request: NextRequest) {
         group_number: groupNumber,
         slot_number: slotNumber,
         action: 'leave',
-        details: `学生 ${studentName} 退出第${groupNumber}组第${slotNumber}号座位`,
+        details: `${isAdmin ? '管理员' : '学生'} ${studentName} ${isAdmin ? '强制移除' : '退出'}第${groupNumber}组第${slotNumber}号座位`,
         ip_address: ipAddress,
         user_agent: userAgent,
       });
     
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('退出分组失败:', error);
+    console.error('操作失败:', error);
     return NextResponse.json(
-      { error: '退出分组失败，请稍后重试' },
+      { error: '操作失败，请稍后重试' },
       { status: 500 }
     );
   }
