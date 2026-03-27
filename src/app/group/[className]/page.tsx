@@ -63,65 +63,88 @@ export default function GroupPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [wantLeader, setWantLeader] = useState(false);
 
+  // 标记客户端已挂载
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // 检查登录状态
   useEffect(() => {
     if (!mounted) return;
     
-    // 检查登录状态（仅在客户端执行）
-    const userStr = localStorage.getItem('currentUser');
-    const isAdmin = localStorage.getItem('isAdmin') === 'true';
+    const checkAuth = () => {
+      const userStr = localStorage.getItem('currentUser');
+      const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-    if (!userStr) {
-      router.push('/');
-      return;
-    }
-
-    try {
-      const user = JSON.parse(userStr);
-
-      // 如果是管理员，跳转到管理员页面
-      if (isAdmin) {
-        router.push('/admin');
-        return;
-      }
-
-      // 检查班级是否匹配
-      if (user.className !== className) {
+      if (!userStr) {
+        console.log('未找到用户信息，跳转首页');
+        setLoading(false);
         router.push('/');
         return;
       }
 
-      setCurrentUser(user);
-      fetchGroupData();
-    } catch (e) {
-      console.error('解析用户信息失败:', e);
-      router.push('/');
-    }
+      try {
+        const user = JSON.parse(userStr) as CurrentUser;
+
+        // 如果是管理员，跳转到管理员页面
+        if (isAdmin) {
+          console.log('管理员登录，跳转管理页面');
+          setLoading(false);
+          router.push('/admin');
+          return;
+        }
+
+        // 解码URL中的className（处理中文编码问题）
+        const decodedClassName = decodeURIComponent(className);
+        
+        // 检查班级是否匹配
+        if (user.className !== decodedClassName) {
+          console.log('班级不匹配:', user.className, decodedClassName);
+          setLoading(false);
+          router.push('/');
+          return;
+        }
+
+        console.log('验证通过，用户:', user);
+        setCurrentUser(user);
+      } catch (e) {
+        console.error('解析用户信息失败:', e);
+        setLoading(false);
+        router.push('/');
+      }
+    };
+
+    checkAuth();
   }, [className, router, mounted]);
 
-  const fetchGroupData = async () => {
-    try {
-      const res = await fetch(`/api/groups/${className}`);
-      const data = await res.json();
-      setSlots(data.slots || []);
-      setStudents(data.students || []);
+  // 获取分组数据（依赖 currentUser）
+  useEffect(() => {
+    if (!currentUser || !mounted) return;
 
-      // 检查当前用户是否已选择组长
-      const userSlot = (data.slots || []).find(
-        (s: GroupSlot) => s.student_id === currentUser?.id
-      );
-      if (userSlot) {
-        setWantLeader(userSlot.is_leader);
+    const fetchGroupData = async () => {
+      try {
+        // 对className进行URL编码
+        const res = await fetch(`/api/groups/${encodeURIComponent(className)}`);
+        const data = await res.json();
+        setSlots(data.slots || []);
+        setStudents(data.students || []);
+
+        // 检查当前用户是否已选择组长
+        const userSlot = (data.slots || []).find(
+          (s: GroupSlot) => s.student_id === currentUser.id
+        );
+        if (userSlot) {
+          setWantLeader(userSlot.is_leader);
+        }
+      } catch (error) {
+        console.error('获取分组数据失败:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('获取分组数据失败:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchGroupData();
+  }, [className, currentUser, mounted]);
 
   const getSlotByGroupAndNumber = (groupNum: number, slotNum: number) => {
     return slots.find(
@@ -153,10 +176,10 @@ export default function GroupPage() {
         return;
       }
 
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('加入失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
@@ -186,10 +209,10 @@ export default function GroupPage() {
       }
 
       setWantLeader(false);
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('退出失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
@@ -218,10 +241,10 @@ export default function GroupPage() {
         return;
       }
 
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('操作失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
@@ -250,16 +273,16 @@ export default function GroupPage() {
       }
 
       setWantLeader(checked);
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('设置失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
 
   const handleExport = () => {
-    window.location.href = `/api/export/${className}`;
+    window.location.href = `/api/export/${encodeURIComponent(className)}`;
   };
 
   const handleLogout = () => {
@@ -271,7 +294,8 @@ export default function GroupPage() {
   // 获取当前用户的槽位
   const mySlot = slots.find(s => s.student_id === currentUser?.id);
 
-  if (loading) {
+  // 在客户端挂载前显示加载状态
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-blue-50 to-purple-50">
         <div className="text-lg text-gray-600">加载中...</div>

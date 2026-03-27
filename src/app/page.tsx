@@ -69,8 +69,9 @@ export default function HomePage() {
       localStorage.setItem('currentUser', JSON.stringify(data.student));
       localStorage.setItem('isAdmin', 'false');
 
-      // 跳转到分组页面
-      router.push(`/group/${selectedClass}`);
+      // 使用 window.location.href 强制刷新页面跳转
+      // 对班级名称进行URL编码，处理中文字符
+      window.location.href = `/group/${encodeURIComponent(selectedClass)}`;
     } catch (err) {
       setError('登录失败，请稍后重试');
       setLoading(false);
@@ -104,8 +105,8 @@ export default function HomePage() {
       localStorage.setItem('currentUser', JSON.stringify(data.admin));
       localStorage.setItem('isAdmin', 'true');
 
-      // 跳转到管理员页面
-      router.push('/admin');
+      // 使用 window.location.href 强制刷新页面跳转
+      window.location.href = '/admin';
     } catch (err) {
       setError('登录失败，请稍后重试');
       setLoading(false);

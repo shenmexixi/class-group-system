@@ -60,14 +60,6 @@ const GROUP_COLORS = [
   'from-yellow-200 to-yellow-300',
 ];
 
-const CLASS_COLORS = [
-  'border-pink-300',
-  'border-blue-300',
-  'border-purple-300',
-  'border-green-300',
-  'border-yellow-300',
-];
-
 export default function AdminPage() {
   const router = useRouter();
   const [classes, setClasses] = useState<ClassInfo[]>([]);
@@ -79,62 +71,74 @@ export default function AdminPage() {
   const [mounted, setMounted] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // 标记客户端已挂载
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // 检查登录状态
   useEffect(() => {
     if (!mounted) return;
     
-    // 检查管理员登录状态（仅在客户端执行）
-    const userStr = localStorage.getItem('currentUser');
-    const isAdmin = localStorage.getItem('isAdmin') === 'true';
+    const checkAuth = () => {
+      const userStr = localStorage.getItem('currentUser');
+      const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-    if (!userStr || !isAdmin) {
-      router.push('/');
-      return;
-    }
+      if (!userStr || !isAdmin) {
+        router.push('/');
+        return;
+      }
 
-    try {
-      setCurrentAdmin(JSON.parse(userStr));
-      fetchClasses();
-    } catch (e) {
-      console.error('解析管理员信息失败:', e);
-      router.push('/');
-    }
+      try {
+        setCurrentAdmin(JSON.parse(userStr));
+      } catch (e) {
+        console.error('解析管理员信息失败:', e);
+        router.push('/');
+      }
+    };
+
+    checkAuth();
   }, [router, mounted]);
 
-  const fetchClasses = async () => {
-    try {
-      const res = await fetch('/api/classes');
-      const data = await res.json();
-      setClasses(data.classes);
-      if (data.classes.length > 0) {
-        setSelectedClass(data.classes[0].name);
-      }
-      setLoading(false);
-    } catch (error) {
-      console.error('获取班级列表失败:', error);
-      setLoading(false);
-    }
-  };
-
+  // 获取班级列表（依赖 currentAdmin）
   useEffect(() => {
-    if (selectedClass) {
-      fetchGroupData();
-    }
-  }, [selectedClass]);
+    if (!currentAdmin || !mounted) return;
 
-  const fetchGroupData = async () => {
-    try {
-      const res = await fetch(`/api/groups/${selectedClass}`);
-      const data = await res.json();
-      setSlots(data.slots || []);
-      setStudents(data.students || []);
-    } catch (error) {
-      console.error('获取分组数据失败:', error);
-    }
-  };
+    const fetchClasses = async () => {
+      try {
+        const res = await fetch('/api/classes');
+        const data = await res.json();
+        setClasses(data.classes);
+        if (data.classes.length > 0) {
+          setSelectedClass(data.classes[0].name);
+        }
+        setLoading(false);
+      } catch (error) {
+        console.error('获取班级列表失败:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchClasses();
+  }, [currentAdmin, mounted]);
+
+  // 获取分组数据（依赖 selectedClass）
+  useEffect(() => {
+    if (!selectedClass || !mounted) return;
+
+    const fetchGroupData = async () => {
+      try {
+        const res = await fetch(`/api/groups/${encodeURIComponent(selectedClass)}`);
+        const data = await res.json();
+        setSlots(data.slots || []);
+        setStudents(data.students || []);
+      } catch (error) {
+        console.error('获取分组数据失败:', error);
+      }
+    };
+
+    fetchGroupData();
+  }, [selectedClass, mounted]);
 
   const getSlotByGroupAndNumber = (groupNum: number, slotNum: number) => {
     return slots.find(
@@ -164,10 +168,10 @@ export default function AdminPage() {
         return;
       }
 
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('操作失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
@@ -194,10 +198,10 @@ export default function AdminPage() {
         return;
       }
 
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('移除失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
@@ -224,16 +228,16 @@ export default function AdminPage() {
         return;
       }
 
-      await fetchGroupData();
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
       alert('设置失败，请稍后重试');
-    } finally {
       setActionLoading(false);
     }
   };
 
   const handleExport = () => {
-    window.location.href = `/api/export/${selectedClass}`;
+    window.location.href = `/api/export/${encodeURIComponent(selectedClass)}`;
   };
 
   const handleLogout = () => {
@@ -242,7 +246,8 @@ export default function AdminPage() {
     router.push('/');
   };
 
-  if (loading) {
+  // 在客户端挂载前显示加载状态
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-blue-50 to-purple-50">
         <div className="text-lg text-gray-600">加载中...</div>
