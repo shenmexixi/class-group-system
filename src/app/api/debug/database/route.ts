@@ -9,6 +9,11 @@ export async function GET(request: NextRequest) {
   try {
     const client = getSupabaseClient();
     const className = request.nextUrl.searchParams.get('class') || '材料A2511';
+    const showConfig = request.nextUrl.searchParams.get('showConfig') === 'true';
+    
+    // 获取数据库URL（脱敏）
+    const dbUrl = process.env.COZE_SUPABASE_URL || 'not set';
+    const maskedUrl = dbUrl.length > 30 ? dbUrl.substring(0, 50) + '...' : dbUrl;
     
     // 1. 统计学生数量
     const { count: studentCount, error: studentError } = await client
@@ -33,6 +38,7 @@ export async function GET(request: NextRequest) {
     const diagnostics = {
       environment: process.env.COZE_PROJECT_ENV || 'unknown',
       database: {
+        url: showConfig ? maskedUrl : undefined,
         connected: !studentError && !slotsError,
         errors: studentError?.message || slotsError?.message || null,
       },
