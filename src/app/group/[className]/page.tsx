@@ -55,7 +55,13 @@ const GROUP_COLORS = [
 export default function GroupPage() {
   const params = useParams();
   const router = useRouter();
-  const className = params.className as string;
+  
+  // 获取 className 并确保解码为中文
+  // Next.js 的动态路由参数可能是编码格式，需要解码
+  const rawClassName = params.className as string;
+  const className = rawClassName.includes('%') 
+    ? decodeURIComponent(rawClassName) 
+    : rawClassName;
 
   const [slots, setSlots] = useState<GroupSlot[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -83,7 +89,7 @@ export default function GroupPage() {
       const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
       console.log('[checkAuth] 开始检查登录状态');
-      console.log('[checkAuth] className from URL:', className);
+      console.log('[checkAuth] className from URL (已解码):', className);
       console.log('[checkAuth] userStr:', userStr ? '存在' : '不存在');
 
       if (!userStr) {
@@ -102,15 +108,25 @@ export default function GroupPage() {
           return;
         }
 
-        const decodedClassName = decodeURIComponent(className);
-        console.log('[checkAuth] decodedClassName:', decodedClassName);
-        console.log('[checkAuth] user.className:', user.className);
-        console.log('[checkAuth] 班级匹配:', user.className === decodedClassName);
+        // 确保 user.className 也是解码格式
+        const userClassName = user.className.includes('%')
+          ? decodeURIComponent(user.className)
+          : user.className;
         
-        if (user.className !== decodedClassName) {
+        console.log('[checkAuth] userClassName (处理后):', userClassName);
+        console.log('[checkAuth] 班级匹配:', userClassName === className);
+        
+        if (userClassName !== className) {
           setLoading(false);
           router.push('/');
           return;
+        }
+
+        // 如果 user.className 是编码格式，更新为中文格式
+        if (user.className !== userClassName) {
+          user.className = userClassName;
+          localStorage.setItem('currentUser', JSON.stringify(user));
+          console.log('[checkAuth] 已更新 localStorage 中的 className 为中文格式');
         }
 
         console.log('[checkAuth] 设置 currentUser');
@@ -205,11 +221,12 @@ export default function GroupPage() {
 
     setActionLoading(true);
     try {
+      console.log('[handleConfirmSeat] 发送 className:', className);
       const res = await fetch('/api/groups/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className: decodeURIComponent(className),
+          className: className,  // 已经是解码后的中文格式
           groupNumber: selectedGroup,
           slotNumber: selectedSlot,
           studentId: currentUser.id,
@@ -270,7 +287,7 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className: decodeURIComponent(className),
+          className: className,  // 已经是解码后的中文格式
           studentId: currentUser.id,
         }),
       });
@@ -305,7 +322,7 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className: decodeURIComponent(className),
+          className: className,  // 已经是解码后的中文格式
           groupNumber: mySlot.group_number,
           slotNumber: mySlot.slot_number,
           studentId: currentUser.id,
@@ -338,7 +355,7 @@ export default function GroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          className: decodeURIComponent(className),
+          className: className,  // 已经是解码后的中文格式
           studentId: currentUser.id,
           isLeader: checked,
         }),
@@ -383,8 +400,7 @@ export default function GroupPage() {
     );
   }
 
-  const decodedClassName = decodeURIComponent(className);
-
+  // className 已经在顶部解码过了，直接使用
   return (
     <div className="min-h-screen p-4 bg-gradient-to-br from-pink-50 via-blue-50 to-purple-50">
       <div className="max-w-7xl mx-auto">
@@ -392,7 +408,7 @@ export default function GroupPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-              {decodedClassName} 分组选座 <span className="text-sm text-gray-400">{VERSION}</span>
+              {className} 分组选座 <span className="text-sm text-gray-400">{VERSION}</span>
             </h1>
             <p className="text-sm text-gray-600 mt-1">
               欢迎，{currentUser?.name}（{currentUser?.studentId}）
