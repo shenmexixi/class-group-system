@@ -17,6 +17,7 @@ import {
   Check,
   X,
 } from 'lucide-react';
+import { VERSION } from '@/lib/version';
 
 interface Student {
   id: number;
@@ -366,7 +367,7 @@ export default function GroupPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-              {decodedClassName} 分组选座
+              {decodedClassName} 分组选座 <span className="text-sm text-gray-400">{VERSION}</span>
             </h1>
             <p className="text-sm text-gray-600 mt-1">
               欢迎，{currentUser?.name}（{currentUser?.studentId}）

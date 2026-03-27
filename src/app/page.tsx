@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GraduationCap, Lock, Users } from 'lucide-react';
+import { VERSION } from '@/lib/version';
 
 interface ClassInfo {
   id: number;
@@ -121,7 +122,7 @@ export default function HomePage() {
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
           <CardTitle className="text-2xl bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-            教学班级分组系统
+            教学班级分组系统 <span className="text-sm text-gray-400">{VERSION}</span>
           </CardTitle>
           <CardDescription>
             选择班级并输入姓名或学号登录

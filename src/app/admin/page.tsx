@@ -34,6 +34,7 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
+import { VERSION } from '@/lib/version';
 
 interface Student {
   id: number;
@@ -448,7 +449,7 @@ export default function AdminPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">
-              管理员控制台
+              管理员控制台 <span className="text-sm text-gray-400">{VERSION}</span>
             </h1>
             <p className="text-sm text-gray-600 mt-1">
               当前管理员：{currentAdmin?.username}

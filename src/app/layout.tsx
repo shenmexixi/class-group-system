@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import { Inspector } from 'react-dev-inspector';
+import { VERSION } from '@/lib/version';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: '教学班级分组系统',
-    template: '%s | 教学班级分组系统',
+    default: `教学班级分组系统 ${VERSION}`,
+    template: `%s | 教学班级分组系统 ${VERSION}`,
   },
   description:
     '教学班级分组管理系统，支持学生自主选座、管理员统一管理、导出Excel等功能。',
