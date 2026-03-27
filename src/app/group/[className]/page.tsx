@@ -671,6 +671,32 @@ export default function GroupPage() {
           </Card>
         )}
 
+        {/* 调试信息 - 仅在开发环境或URL参数debug=1时显示 */}
+        {(process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1')) && (
+          <Card className="mt-6 border-2 border-yellow-200 bg-yellow-50/80 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-lg text-yellow-700">调试信息</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs space-y-2">
+              <div>
+                <strong>当前用户:</strong> {currentUser ? `${currentUser.name} (ID: ${currentUser.id})` : '未登录'}
+              </div>
+              <div>
+                <strong>座位数据:</strong> 共 {slots.length} 条记录
+              </div>
+              <div>
+                <strong>已占座位:</strong> {slots.filter(s => s.student_id).length} 个
+              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-yellow-600">查看座位详情</summary>
+                <pre className="mt-2 p-2 bg-white rounded text-xs overflow-auto max-h-40">
+                  {JSON.stringify(slots.filter(s => s.student_id), null, 2)}
+                </pre>
+              </details>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 使用说明 */}
         <Card className="mt-6 border-2 border-purple-200 bg-white/80 backdrop-blur">
           <CardHeader>
