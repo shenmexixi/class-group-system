@@ -76,10 +76,17 @@ export default function AdminPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
-    // 检查管理员登录状态
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
+    // 检查管理员登录状态（仅在客户端执行）
     const userStr = localStorage.getItem('currentUser');
     const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
@@ -88,9 +95,14 @@ export default function AdminPage() {
       return;
     }
 
-    setCurrentAdmin(JSON.parse(userStr));
-    fetchClasses();
-  }, [router]);
+    try {
+      setCurrentAdmin(JSON.parse(userStr));
+      fetchClasses();
+    } catch (e) {
+      console.error('解析管理员信息失败:', e);
+      router.push('/');
+    }
+  }, [router, mounted]);
 
   const fetchClasses = async () => {
     try {

@@ -59,11 +59,18 @@ export default function GroupPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [wantLeader, setWantLeader] = useState(false);
 
   useEffect(() => {
-    // 检查登录状态
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
+    // 检查登录状态（仅在客户端执行）
     const userStr = localStorage.getItem('currentUser');
     const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
@@ -72,23 +79,28 @@ export default function GroupPage() {
       return;
     }
 
-    const user = JSON.parse(userStr);
+    try {
+      const user = JSON.parse(userStr);
 
-    // 如果是管理员，跳转到管理员页面
-    if (isAdmin) {
-      router.push('/admin');
-      return;
-    }
+      // 如果是管理员，跳转到管理员页面
+      if (isAdmin) {
+        router.push('/admin');
+        return;
+      }
 
-    // 检查班级是否匹配
-    if (user.className !== className) {
+      // 检查班级是否匹配
+      if (user.className !== className) {
+        router.push('/');
+        return;
+      }
+
+      setCurrentUser(user);
+      fetchGroupData();
+    } catch (e) {
+      console.error('解析用户信息失败:', e);
       router.push('/');
-      return;
     }
-
-    setCurrentUser(user);
-    fetchGroupData();
-  }, [className, router]);
+  }, [className, router, mounted]);
 
   const fetchGroupData = async () => {
     try {
